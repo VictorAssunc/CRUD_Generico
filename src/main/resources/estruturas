@@ -1,0 +1,10 @@
+ARQUIVO:
++-------------------+
+|LAST_ID            |
+|REGISTROS          |
+|...                |
++-------------------+
+
+REGISTROS:
+Lápide(Byte) | Tamanho(Short) | Dados(Byte Array)
+     0/1
