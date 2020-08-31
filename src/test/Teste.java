@@ -1,9 +1,7 @@
-import org.junit.Assert;
-
 import java.io.File;
 import java.text.SimpleDateFormat;
 import java.util.Date;
-
+import org.junit.Assert;
 
 public class Teste {
     public static final String __author__ = "Texugo";
