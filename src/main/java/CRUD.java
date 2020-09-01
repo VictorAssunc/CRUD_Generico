@@ -44,16 +44,28 @@ public class CRUD<T extends Registro> {
     public T read(int ID) throws IOException, IllegalAccessException, InvocationTargetException, InstantiationException {
         RandomAccessFile file = new RandomAccessFile(fileName, "rw");
 
+        // CHECA SE O ARQUIVO ESTÁ VAZIO
         if(file.length() == 0) {
             return null;
         }
 
+        // CHECA SE O ID ALVO É MAIOR QUE O ÚLTIMO ID INSERIDO
         int lastID = file.readInt();
         if(ID > lastID) {
             return null;
         }
 
         T object = this.constructor.newInstance();
+        /*
+            ENQUANTO O ID DO OBJETO FOR DIFERENTE DO ID ALVO E NÃO TENHA ALCANÇADO O FIM DO ARQUIVO
+            É FEITA A LEITURA DO PRÓXIMO BYTE, QUE SERÁ A LÁPIDE DO REGISTRO, ONDE É CHECADO SEU ESTADO E TEM DUAS POSSIBILIDADES:
+                - ARQUIVO MORTO (LÁPIDE = 1):
+                    OS PRÓXIMOS BYTES SÃO LIDOS, REFERENTES AO TAMANHO DO REGISTRO, ENTÃO O PONTEIRO DE LEITURA
+                    PULA A QUANTIDADE LIDA DE BYTES E VOLTA AO INÍCIO DO LOOP.
+                - ARQUIVO ATIVO (LÁPIDE = 0):
+                    A LEITURA DOS PRÓXIMOS BYTES É REALIZADA E USADA COMO O TAMANHO DO BYTE ARRAY E OS DADOS DO REGISTRO
+                    SÃO LIDOS E ARMAZENADOS NO BYTE ARRAY E, ENFIM, PASSADO PARA O OBJETO UTILIZADO O MÉTODO `fromByteArray()`
+        */
         while(object.getID() != ID && file.getFilePointer() != file.length()) {
             if(file.readByte() != 0) {  // Leitura da lápide
                 short bytesToNext = file.readShort();
@@ -67,6 +79,7 @@ public class CRUD<T extends Registro> {
             object.fromByteArray(data);
         }
 
+        // CHECA SE O OBJETO FINAL É O PROCURADO
         if(object.getID() != ID) {
             return null;
         }
@@ -77,10 +90,12 @@ public class CRUD<T extends Registro> {
     public boolean update(T newObject) throws IOException, IllegalAccessException, InvocationTargetException, InstantiationException {
         RandomAccessFile file = new RandomAccessFile(fileName, "rw");
 
+        // CHECA SE O ARQUIVO ESTÁ VAZIO
         if(file.length() == 0) {
             return false;
         }
 
+        // CHECA SE O ID DO OBJETO É MAIOR QUE O ÚLTIMO ID INSERIDO
         int lastID = file.readInt();
         if(newObject.getID() > lastID) {
             return false;
@@ -88,6 +103,17 @@ public class CRUD<T extends Registro> {
 
         T object = this.constructor.newInstance();
         long tombstonePosition = 0;
+        /*
+            ENQUANTO O ID DO OBJETO FOR DIFERENTE DO ID ALVO E NÃO TENHA ALCANÇADO O FIM DO ARQUIVO
+            O `tombstonePosition` equivale à localização da lápide do registro atual.
+            É FEITA A LEITURA DO PRÓXIMO BYTE, QUE SERÁ A LÁPIDE DO REGISTRO, ONDE É CHECADO SEU ESTADO E TEM DUAS POSSIBILIDADES:
+                - ARQUIVO MORTO (LÁPIDE = 1):
+                    OS PRÓXIMOS BYTES SÃO LIDOS, REFERENTES AO TAMANHO DO REGISTRO, ENTÃO O PONTEIRO DE LEITURA
+                    PULA A QUANTIDADE LIDA DE BYTES E VOLTA AO INÍCIO DO LOOP.
+                - ARQUIVO ATIVO (LÁPIDE = 0):
+                    A LEITURA DOS PRÓXIMOS BYTES É REALIZADA E USADA COMO O TAMANHO DO BYTE ARRAY E OS DADOS DO REGISTRO
+                    SÃO LIDOS E ARMAZENADOS NO BYTE ARRAY E, ENFIM, PASSADO PARA O OBJETO UTILIZADO O MÉTODO `fromByteArray()`
+        */
         while(object.getID() != newObject.getID() && file.getFilePointer() != file.length()) {
             tombstonePosition = file.getFilePointer();
             if(file.readByte() != 0) {  // Leitura da lápide
@@ -102,16 +128,23 @@ public class CRUD<T extends Registro> {
             object.fromByteArray(data);
         }
 
+        // CHECA SE O OBJETO FINAL É O PROCURADO OU SE A POSIÇÃO DA ÚLTIMA LÁPIDE LIDA É IGUAL AO COMEÇO DO ARQUIVO
         if(object.getID() != newObject.getID() || tombstonePosition == 0) {
             return false;
         }
 
+        // CASO TENHA ENCONTRADO O REGISTRO, O PONTEIRO DE LEITURA RETORNA PRA POSIÇÃO DA ÚLTIMA LÁPIDE E FAZ LEITURA DELA
+        // MAS ESSA LEITURA NÃO É ARMAZENADA, SERVE APENAS PARA PULAR PRO CAMPO DE TAMANHO DO REGISTRO
         file.seek(tombstonePosition);
         file.readByte();
 
+        // É FEITA A LEITURA DO TAMANHO DO REGISTRO ATUAL
         short originalSize = file.readShort();
+        // O OBJETO COM AS ATUALIZAÇÕES É TRANSFORMADO EM BYTE ARRAY
         byte[] newByteArray = newObject.toByteArray();
+        // O TAMANHO DO NOVO BYTE ARRAY É COMPARADO COM O ANTIGO
         if(newByteArray.length > originalSize) {
+            // CASO O NOVO SEJA MAIOR, O ATUAL REGISTRO É APAGADO E A NOVA LÁPIDE, JUNTAMENTE COM O NOVO TAMANHO, SÃO ESCRITOS NO FIM DO ARQUIVO
             file.seek(tombstonePosition);
             file.writeByte(1);  // Morreu, F
             file.seek(file.length());
@@ -119,6 +152,8 @@ public class CRUD<T extends Registro> {
             file.writeShort(newByteArray.length);
         }
 
+        // CASO O NOVO REGISTRO TENHO TAMANHO MENOR OU IGUAL, ELE SÓ IRÁ SOBRESCREVER O ATUAL
+        // EM AMBOS OS CASOS, A FUNÇÃO DE ESCRITA SERÁ REALIZAD DA MESMA MANEIRA, POR ISSO ESTÁ FORA DO IF
         file.write(newByteArray);
         file.close();
 
@@ -128,10 +163,12 @@ public class CRUD<T extends Registro> {
     public boolean delete(int ID) throws IOException, IllegalAccessException, InvocationTargetException, InstantiationException {
         RandomAccessFile file = new RandomAccessFile(fileName, "rw");
 
+        // CHECA SE O ARQUIVO ESTÁ VAZIO
         if(file.length() == 0) {
             return false;
         }
 
+        // CHECA SE O ID DO OBJETO É MAIOR QUE O ÚLTIMO ID INSERIDO
         int lastID = file.readInt();
         if(ID > lastID) {
             return false;
@@ -139,6 +176,17 @@ public class CRUD<T extends Registro> {
 
         T object = this.constructor.newInstance();
         long tombstonePosition = 0;
+        /*
+            ENQUANTO O ID DO OBJETO FOR DIFERENTE DO ID ALVO E NÃO TENHA ALCANÇADO O FIM DO ARQUIVO
+            O `tombstonePosition` equivale à localização da lápide do registro atual.
+            É FEITA A LEITURA DO PRÓXIMO BYTE, QUE SERÁ A LÁPIDE DO REGISTRO, ONDE É CHECADO SEU ESTADO E TEM DUAS POSSIBILIDADES:
+                - ARQUIVO MORTO (LÁPIDE = 1):
+                    OS PRÓXIMOS BYTES SÃO LIDOS, REFERENTES AO TAMANHO DO REGISTRO, ENTÃO O PONTEIRO DE LEITURA
+                    PULA A QUANTIDADE LIDA DE BYTES E VOLTA AO INÍCIO DO LOOP.
+                - ARQUIVO ATIVO (LÁPIDE = 0):
+                    A LEITURA DOS PRÓXIMOS BYTES É REALIZADA E USADA COMO O TAMANHO DO BYTE ARRAY E OS DADOS DO REGISTRO
+                    SÃO LIDOS E ARMAZENADOS NO BYTE ARRAY E, ENFIM, PASSADO PARA O OBJETO UTILIZADO O MÉTODO `fromByteArray()`
+        */
         while(object.getID() != ID && file.getFilePointer() != file.length()) {
             tombstonePosition = file.getFilePointer();
             if(file.readByte() != 0) {  // Leitura da lápide
@@ -153,11 +201,14 @@ public class CRUD<T extends Registro> {
             object.fromByteArray(data);
         }
 
+        // CHECA SE O OBJETO FINAL É O PROCURADO
         if(object.getID() != ID) {
             return false;
         }
 
+        // CHECA SE A POSIÇÃO DA ÚLTIMA LÁPIDE LIDA É IGUAL AO COMEÇO DO ARQUIVO
         if(tombstonePosition != 0) {
+            // CASO SEJA UMA POSIÇÃO VÁLIDA, ESCREVE 1 NA LÁPIDE, PARA INDICAR A DELEÇÃO
             file.seek(tombstonePosition);
             file.writeByte(1);  // Press F to pay respect
         }
